@@ -194,7 +194,9 @@ class ManualProcessor:
             # Ordena por similaridade e pega os top N
             similares_ordenados = sorted(similaridades, key=lambda x: x['relevancia'], reverse=True)
             
-            logger.info(f"Busca semântica: top 3 relevâncias = {[f'{x['relevancia']:.3f}' for x in similares_ordenados[:3]]}")
+            # ✅ CORREÇÃO: F-string com aspas duplas
+            relevancia_scores = [f"{x['relevancia']:.3f}" for x in similares_ordenados[:3]]
+            logger.info(f"Busca semântica: top 3 relevâncias = {relevancia_scores}")
             
             return similares_ordenados[:top_n]
             
