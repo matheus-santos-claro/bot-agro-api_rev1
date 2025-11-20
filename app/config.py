@@ -10,10 +10,10 @@ class Settings:
     OPENAI_MODEL: str = "gpt-4o-mini"
     
     # API Configuration
-    API_TITLE: str = "Bot AgrÌcola API"
+    API_TITLE: str = "Bot Agricola API"
     API_VERSION: str = "1.0.0"
     API_DESCRIPTION: str = """
-    ?? Bot AgrÌcola - API para consultas tÈcnicas sobre m·quinas agrÌcolas
+    ?? Bot Agr√≠cola - API para consultas t√©cnicas sobre m√°quinas agr√≠colas
     
     Suporte para manuais de:
     - Case IH
@@ -34,7 +34,7 @@ class Settings:
     MAX_MANUAL_RESULTS: int = 5
     
     def validate_openai_key(self) -> bool:
-        """Valida se a chave da OpenAI est· configurada"""
+        """Valida se a chave da OpenAI est√° configurada"""
         return bool(self.OPENAI_API_KEY and self.OPENAI_API_KEY.startswith('sk-'))
 
 settings = Settings()
