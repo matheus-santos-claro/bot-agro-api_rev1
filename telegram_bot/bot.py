@@ -51,11 +51,26 @@ class AgroTelegramBot:
         logger.info("✅ Handlers configurados")
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Comando /start"""
-        user_data = self._extract_user_data(update)
-        await self.database.registrar_usuario(user_data)
+        """Comando /start - VERSÃO CORRIGIDA COM AUTO-INICIALIZAÇÃO"""
+        logger.info(f"🎯 COMANDO /START RECEBIDO!")
+        logger.info(f"👤 Usuário: {update.effective_user.id} - {update.effective_user.first_name}")
         
-        welcome_text = f"""
+        try:
+            user_data = self._extract_user_data(update)
+            logger.info(f"📊 User data extraído: {user_data}")
+            
+            # Tenta registrar usuário, se falhar, inicializa banco
+            try:
+                await self.database.registrar_usuario(user_data)
+                logger.info("✅ Usuário registrado no banco")
+            except Exception as db_error:
+                logger.warning(f"⚠️ Erro no banco: {db_error}")
+                logger.info("🔄 Inicializando banco de dados...")
+                await self.database.initialize()
+                await self.database.registrar_usuario(user_data)
+                logger.info("✅ Banco inicializado e usuário registrado")
+            
+            welcome_text = f"""
 🌾 **Bot Agrícola Expert**
 
 Olá {user_data.get('first_name', 'Usuário')}! 
@@ -80,8 +95,16 @@ Envie sua pergunta sobre:
 /status - Status da API
 
 Vamos começar! Envie sua primeira pergunta! 🚀
-        """
-        await update.message.reply_text(welcome_text, parse_mode='Markdown')
+            """
+            
+            await update.message.reply_text(welcome_text, parse_mode='Markdown')
+            logger.info("✅ Mensagem de boas-vindas enviada")
+            
+        except Exception as e:
+            logger.error(f"❌ Erro no comando start: {str(e)}")
+            await update.message.reply_text(
+                "❌ Erro interno. O sistema está sendo inicializado. Tente novamente em alguns segundos."
+            )
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /help"""
@@ -130,7 +153,12 @@ Se encontrar problemas, entre em contato com nossa equipe.
                 api_data = {}
             
             # Estatísticas do banco
-            stats = await self.database.get_estatisticas_gerais()
+            try:
+                stats = await self.database.get_estatisticas_gerais()
+            except Exception as db_error:
+                logger.warning(f"⚠️ Erro ao acessar estatísticas: {db_error}")
+                await self.database.initialize()
+                stats = await self.database.get_estatisticas_gerais()
             
             status_text = f"""
 🔍 **Status do Sistema:**
@@ -159,7 +187,13 @@ Se encontrar problemas, entre em contato com nossa equipe.
         user_id = update.effective_user.id
         
         try:
-            stats = await self.database.get_estatisticas_usuario(user_id)
+            # Tenta buscar estatísticas, se falhar, inicializa banco
+            try:
+                stats = await self.database.get_estatisticas_usuario(user_id)
+            except Exception as db_error:
+                logger.warning(f"⚠️ Erro ao acessar estatísticas: {db_error}")
+                await self.database.initialize()
+                stats = await self.database.get_estatisticas_usuario(user_id)
             
             if not stats:
                 await update.message.reply_text("❌ Nenhuma estatística encontrada. Use /start para se registrar.")
@@ -220,8 +254,15 @@ Se encontrar problemas, entre em contato com nossa equipe.
             return
         
         try:
-            stats = await self.database.get_estatisticas_gerais()
-            top_users = await self.database.get_top_usuarios(5)
+            # Tenta buscar estatísticas, se falhar, inicializa banco
+            try:
+                stats = await self.database.get_estatisticas_gerais()
+                top_users = await self.database.get_top_usuarios(5)
+            except Exception as db_error:
+                logger.warning(f"⚠️ Erro ao acessar dados admin: {db_error}")
+                await self.database.initialize()
+                stats = await self.database.get_estatisticas_gerais()
+                top_users = await self.database.get_top_usuarios(5)
             
             # Formata top usuários
             top_users_text = ""
@@ -297,7 +338,13 @@ Se encontrar problemas, entre em contato com nossa equipe.
             return
         
         try:
-            top_users = await self.database.get_top_usuarios(10)
+            # Tenta buscar usuários, se falhar, inicializa banco
+            try:
+                top_users = await self.database.get_top_usuarios(10)
+            except Exception as db_error:
+                logger.warning(f"⚠️ Erro ao acessar usuários: {db_error}")
+                await self.database.initialize()
+                top_users = await self.database.get_top_usuarios(10)
             
             if not top_users:
                 await update.message.reply_text("📭 Nenhum usuário encontrado")
@@ -337,8 +384,13 @@ Se encontrar problemas, entre em contato com nossa equipe.
         
         logger.info(f"❓ Pergunta de {user_data.get('first_name')} (@{user_data.get('username')}): {pergunta[:50]}...")
         
-        # Registra usuário
-        await self.database.registrar_usuario(user_data)
+        # Registra usuário com tratamento de erro
+        try:
+            await self.database.registrar_usuario(user_data)
+        except Exception as db_error:
+            logger.warning(f"⚠️ Erro ao registrar usuário: {db_error}")
+            await self.database.initialize()
+            await self.database.registrar_usuario(user_data)
         
         # Envia "digitando..."
         await update.message.reply_chat_action("typing")
@@ -349,7 +401,11 @@ Se encontrar problemas, entre em contato com nossa equipe.
             
             if resposta_api:
                 # Registra interação no banco
-                await self.database.registrar_interacao(user_data["id"], pergunta, resposta_api)
+                try:
+                    await self.database.registrar_interacao(user_data["id"], pergunta, resposta_api)
+                except Exception as db_error:
+                    logger.warning(f"⚠️ Erro ao registrar interação: {db_error}")
+                    # Continua mesmo se não conseguir registrar
                 
                 # Formata e envia resposta
                 formatted_response = self.format_response(resposta_api)
