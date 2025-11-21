@@ -442,24 +442,21 @@ Se encontrar problemas, entre em contato com nossa equipe.
         logger.info("✅ Bot inicializado com sucesso!")
     
     async def run(self):
-        """Executa o bot - VERSÃO CORRIGIDA"""
-        try:
-            # Inicializa o bot
-            await self.initialize()
-            
-            logger.info("🤖 Bot rodando! Aguardando mensagens...")
-            
-            # Método correto para python-telegram-bot 20.x
-            await self.app.run_polling(
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True
-            )
-            
-        except Exception as e:
-            logger.error(f"❌ Erro ao executar bot: {str(e)}")
-            raise
-        finally:
-            await self.cleanup()
+    """Executa o bot - VERSÃO SIMPLIFICADA"""
+    try:
+        # Inicializa o bot
+        await self.initialize()
+        
+        logger.info("🤖 Bot rodando! Aguardando mensagens...")
+        
+        # Para uso com run.py síncrono, não precisamos de run_polling aqui
+        # O run.py vai chamar app.run_polling() diretamente
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao executar bot: {str(e)}")
+        raise
+    finally:
+        await self.cleanup()
     
     async def cleanup(self):
         """Limpeza ao finalizar"""
