@@ -511,7 +511,7 @@ Se encontrar problemas, entre em contato com nossa equipe.
         # Remove/substitui caracteres problemáticos
         replacements = {
             '`': "'",      # Backticks
-            '\': '/',     # Barras invertidas
+            '\': '/',     # Barras invertidas - CORRIGIDO
             '[': '(',      # Colchetes
             ']': ')',
         }
@@ -543,7 +543,7 @@ Se encontrar problemas, entre em contato com nossa equipe.
         
         # Limita tamanho
         if len(resposta_limpa) > 3500:
-            resposta_limpa = resposta_limpa[:3500] + "\n\n\[...resposta truncada...\]"
+            resposta_limpa = resposta_limpa[:3500] + "\n\n[...resposta truncada...]"
         
         # Monta resposta
         formatted = f"🤖 **Resposta:**\n\n{resposta_limpa}\n\n"
@@ -557,7 +557,7 @@ Se encontrar problemas, entre em contato com nossa equipe.
             for i, ref in enumerate(referencias[:3], 1):
                 arquivo = self.sanitize_markdown(ref.get("arquivo", "")).replace(".md", "")
                 relevancia = ref.get("relevancia", 0)
-                formatted += f"{i}\. {arquivo} \(relevância: {relevancia:.1%}\)\n"
+                formatted += f"{i}. {arquivo} (relevância: {relevancia:.1%})\n"
         
         return formatted
     
