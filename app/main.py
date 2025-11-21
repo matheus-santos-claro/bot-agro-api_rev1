@@ -1,75 +1,35 @@
 # app/main.py
-import asyncio
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import logging
 import time
-from contextlib import asynccontextmanager
-from typing import Dict, List
-
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+import uuid
+import re
+import html
+import unicodedata
+from typing import Optional
 
 from app.config import settings
+from app.models.schemas import QuestionRequest, BotResponse, HealthResponse, ManualReference
+from app.services.openai_service import OpenAIService
 from app.services.manual_processor import manual_processor
 
 # Configuração de logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s:%(name)s:%(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Modelos Pydantic
-class PerguntaRequest(BaseModel):
-    pergunta: str
-    modelo_maquina: str = None
-
-class PerguntaResponse(BaseModel):
-    resposta: str
-    categoria: str
-    confianca: float
-    referencias: List[Dict]
-    tempo_processamento: float
-    modelo_usado: str
-    fallback_usado: bool
-    tokens_usados: int
-
-class HealthResponse(BaseModel):
-    status: str
-    timestamp: str
-    version: str
-
-class ManuaisStatusResponse(BaseModel):
-    total_manuais: int
-    manuais_carregados: int
-    embeddings_gerados: bool
-    status: str
-    manuais_lista: List[str]
-
-# Contexto de inicialização
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Gerencia o ciclo de vida da aplicação"""
-    logger.info("🚀 Iniciando aplicação...")
-    
-    # Inicializa o processador de manuais
-    try:
-        await manual_processor.initialize()
-        logger.info("✅ Manual processor inicializado com sucesso")
-    except Exception as e:
-        logger.error(f"❌ Erro ao inicializar manual processor: {str(e)}")
-        raise
-    
-    yield
-    
-    logger.info("🛑 Finalizando aplicação...")
-
-# Criação da aplicação FastAPI
+# Inicialização da aplicação
 app = FastAPI(
-    title="Bot Agrícola API",
-    description="API especializada em consultas sobre máquinas agrícolas com busca semântica",
-    version="1.0.0",
-    lifespan=lifespan
+    title="🌾 Bot Agrícola API",
+    description="API especializada em consultas sobre máquinas agrícolas",
+    version="1.0.0"
 )
 
-# Configuração CORS
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -78,13 +38,75 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Endpoints
+# Inicialização dos serviços
+@app.on_event("startup")
+async def startup_event():
+    """Inicializa serviços na startup"""
+    logger.info("🌾 Iniciando Bot Agricola API...")
+    
+    try:
+        # Carrega manuais
+        await manual_processor.initialize()
+        logger.info(f"📚 Manuais carregados: {manual_processor.manuais_carregados} arquivos")
+        
+        # Testa OpenAI
+        if settings.OPENAI_API_KEY:
+            logger.info("🤖 OpenAI API configurada com sucesso")
+        else:
+            logger.warning("⚠️ OpenAI API não configurada")
+        
+        logger.info("✅ API inicializada com sucesso!")
+        
+    except Exception as e:
+        logger.error(f"❌ Erro na inicialização: {str(e)}")
 
-@app.get("/", response_model=Dict[str, str])
+# Dependency injection para OpenAI Service
+def get_openai_service() -> OpenAIService:
+    return OpenAIService()
+
+def sanitize_input(text: str) -> str:
+    """Sanitiza entrada do usuário de forma segura"""
+    if not text:
+        return ""
+    
+    try:
+        # Remove apenas caracteres realmente perigosos
+        text = text.replace('<', '').replace('>', '')
+        text = text.replace('{', '').replace('}', '')
+        
+        # Remove múltiplos espaços
+        text = ' '.join(text.split())
+        
+        # Limita tamanho
+        if len(text) > 500:
+            text = text[:500]
+        
+        return text.strip()
+        
+    except Exception as e:
+        logger.error(f"Erro na sanitização: {str(e)}")
+        return text.strip() if text else ""
+
+def validate_request(request: QuestionRequest) -> tuple[str, Optional[str], Optional[str]]:
+    """Valida e sanitiza dados da requisição"""
+    
+    # Sanitiza pergunta
+    pergunta_limpa = sanitize_input(request.pergunta)
+    if not pergunta_limpa or len(pergunta_limpa) < 5:
+        raise HTTPException(status_code=400, detail="Pergunta deve ter pelo menos 5 caracteres")
+    
+    # Sanitiza modelo e marca (opcionais)
+    modelo_limpo = sanitize_input(request.modelo_maquina) if request.modelo_maquina and request.modelo_maquina != "string" else None
+    marca_limpa = sanitize_input(request.marca) if request.marca and request.marca != "string" else None
+    
+    return pergunta_limpa, modelo_limpo, marca_limpa
+
+# Endpoints
+@app.get("/")
 async def root():
     """Endpoint raiz"""
     return {
-        "message": "Bot Agrícola API",
+        "message": "🌾 Bot Agrícola API - Especialista em Máquinas Agrícolas",
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/health"
@@ -92,195 +114,203 @@ async def root():
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Verificação de saúde da API"""
-    logger.info("❤️ Health check solicitado")
-    
-    from datetime import datetime
+    """Health check da API"""
+    logger.info("🔍 Health check solicitado")
     
     return HealthResponse(
         status="healthy",
-        timestamp=datetime.now().isoformat(),
-        version="1.0.0"
+        version="1.0.0",
+        openai_configured=bool(settings.OPENAI_API_KEY),
+        manuais_carregados=manual_processor.manuais_carregados,
+        timestamp=time.strftime("%Y-%m-%d %H:%M:%S")
     )
 
-@app.get("/manuais/status", response_model=ManuaisStatusResponse)
+@app.get("/manuais/status")
 async def manuais_status():
     """Status dos manuais carregados"""
     logger.info("📊 Status dos manuais solicitado")
     
     try:
-        # Verifica se o processador foi inicializado
-        if not manual_processor.inicializado:
-            raise HTTPException(
-                status_code=503, 
-                detail="Sistema ainda não inicializado. Aguarde alguns segundos."
-            )
-        
-        # Coleta informações dos manuais
-        total_manuais = len(manual_processor.base_manuais)
-        manuais_carregados = manual_processor.manuais_carregados
-        
-        # Lista dos manuais carregados
-        manuais_lista = []
-        for manual in manual_processor.base_manuais:
-            manuais_lista.append(manual.get("titulo", "Título não disponível"))
-        
-        # Verifica se embeddings foram gerados
-        embeddings_gerados = False
-        if manual_processor.base_manuais:
-            primeiro_manual = manual_processor.base_manuais[0]
-            embeddings_gerados = (
-                "embedding_titulo" in primeiro_manual and 
-                len(primeiro_manual.get("embedding_titulo", [])) > 0
-            )
-        
-        # Determina status geral
-        if total_manuais == 0:
-            status = "no_manuals"
-        elif not embeddings_gerados:
-            status = "loading_embeddings"
-        elif total_manuais == manuais_carregados:
-            status = "ready"
+        # Verifica se manual_processor foi inicializado e tem cache
+        if not hasattr(manual_processor, 'manuais_cache') or manual_processor.manuais_cache is None:
+            # Fallback: usa base_manuais se manuais_cache não existir
+            if hasattr(manual_processor, 'base_manuais') and manual_processor.base_manuais:
+                total_manuais = len(manual_processor.base_manuais)
+                manuais_fonte = manual_processor.base_manuais
+                usar_base_manuais = True
+            else:
+                return {
+                    "total_manuais": 0,
+                    "path": settings.MANUAIS_PATH,
+                    "status": "não_inicializado",
+                    "marcas_distribuicao": {},
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                }
         else:
-            status = "partial_load"
+            # Usa manuais_cache normalmente
+            total_manuais = len(manual_processor.manuais_cache)
+            manuais_fonte = manual_processor.manuais_cache.keys()
+            usar_base_manuais = False
         
-        logger.info(f"📊 Status: {total_manuais} manuais, embeddings: {embeddings_gerados}")
+        # Conta manuais por marca
+        marcas_count = {}
         
-        return ManuaisStatusResponse(
-            total_manuais=total_manuais,
-            manuais_carregados=manuais_carregados,
-            embeddings_gerados=embeddings_gerados,
-            status=status,
-            manuais_lista=manuais_lista
-        )
+        if usar_base_manuais:
+            # Conta usando base_manuais
+            for manual in manuais_fonte:
+                titulo = manual.get("titulo", "").lower()
+                arquivo = manual.get("arquivo", "").lower()
+                nome_completo = f"{titulo} {arquivo}".lower()
+                
+                if 'case' in nome_completo:
+                    marcas_count['Case IH'] = marcas_count.get('Case IH', 0) + 1
+                elif 'john' in nome_completo or 'deere' in nome_completo:
+                    marcas_count['John Deere'] = marcas_count.get('John Deere', 0) + 1
+                elif 'holland' in nome_completo:
+                    marcas_count['New Holland'] = marcas_count.get('New Holland', 0) + 1
+                elif 'valtra' in nome_completo:
+                    marcas_count['Valtra'] = marcas_count.get('Valtra', 0) + 1
+                elif 'fendt' in nome_completo:
+                    marcas_count['FENDT'] = marcas_count.get('FENDT', 0) + 1
+                elif 'massey' in nome_completo or 'ferguson' in nome_completo:
+                    marcas_count['Massey Ferguson'] = marcas_count.get('Massey Ferguson', 0) + 1
+                else:
+                    marcas_count['Outros'] = marcas_count.get('Outros', 0) + 1
+        else:
+            # Conta usando manuais_cache (método original)
+            for nome_arquivo in manuais_fonte:
+                nome_lower = nome_arquivo.lower()
+                if 'case' in nome_lower:
+                    marcas_count['Case IH'] = marcas_count.get('Case IH', 0) + 1
+                elif 'john' in nome_lower or 'deere' in nome_lower:
+                    marcas_count['John Deere'] = marcas_count.get('John Deere', 0) + 1
+                elif 'holland' in nome_lower:
+                    marcas_count['New Holland'] = marcas_count.get('New Holland', 0) + 1
+                elif 'valtra' in nome_lower:
+                    marcas_count['Valtra'] = marcas_count.get('Valtra', 0) + 1
+                elif 'fendt' in nome_lower:
+                    marcas_count['FENDT'] = marcas_count.get('FENDT', 0) + 1
+                elif 'massey' in nome_lower or 'ferguson' in nome_lower:
+                    marcas_count['Massey Ferguson'] = marcas_count.get('Massey Ferguson', 0) + 1
+                else:
+                    marcas_count['Outros'] = marcas_count.get('Outros', 0) + 1
+        
+        return {
+            "total_manuais": total_manuais,
+            "path": settings.MANUAIS_PATH,
+            "status": "carregados" if total_manuais > 0 else "vazio",
+            "marcas_distribuicao": marcas_count,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "fonte_dados": "base_manuais" if usar_base_manuais else "manuais_cache"
+        }
         
     except Exception as e:
         logger.error(f"❌ Erro ao verificar status dos manuais: {str(e)}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Erro interno ao verificar status dos manuais: {str(e)}"
-        )
-
-@app.post("/pergunta", response_model=PerguntaResponse)
-async def processar_pergunta(request: PerguntaRequest):
-    """Processa pergunta sobre máquinas agrícolas"""
-    inicio = time.time()
-    
-    logger.info(f"❓ Nova pergunta recebida: '{request.pergunta[:50]}...'")
-    
-    try:
-        # Verifica se o sistema está inicializado
-        if not manual_processor.inicializado:
-            raise HTTPException(
-                status_code=503,
-                detail="Sistema ainda não inicializado. Aguarde alguns segundos e tente novamente."
-            )
         
-        # Verifica se há manuais carregados
-        if not manual_processor.base_manuais:
-            raise HTTPException(
-                status_code=503,
-                detail="Nenhum manual carregado. Sistema em manutenção."
-            )
-        
-        # Busca contexto relevante
-        contexto, referencias = manual_processor.buscar_contexto_relevante(
-            request.pergunta, 
-            request.modelo_maquina
-        )
-        
-        # Se não encontrou contexto relevante, retorna mensagem educativa
-        if not referencias:
-            tempo_processamento = time.time() - inicio
-            
-            return PerguntaResponse(
-                resposta=contexto,  # Já contém a mensagem apropriada
-                categoria="ORIENTACAO",
-                confianca=0.8,
-                referencias=[],
-                tempo_processamento=tempo_processamento,
-                modelo_usado="sistema",
-                fallback_usado=True,
-                tokens_usados=0
-            )
-        
-        # Importa e usa o serviço OpenAI
-        from app.services.openai_service import openai_service
-        
-        # Gera resposta usando OpenAI
-        resposta_openai = await openai_service.gerar_resposta(contexto)
-        
-        tempo_processamento = time.time() - inicio
-        
-        # Determina categoria baseada no conteúdo da resposta
-        categoria = "GERAL"
-        resposta_lower = resposta_openai.get("resposta", "").lower()
-        
-        if any(word in resposta_lower for word in ["motor", "potência", "cv", "hp", "especificação"]):
-            categoria = "ESPECIFICACOES"
-        elif any(word in resposta_lower for word in ["manutenção", "manter", "trocar", "verificar"]):
-            categoria = "MANUTENCAO"
-        elif any(word in resposta_lower for word in ["operar", "configurar", "ajustar", "usar"]):
-            categoria = "OPERACAO"
-        elif any(word in resposta_lower for word in ["problema", "erro", "falha", "troubleshoot"]):
-            categoria = "TROUBLESHOOTING"
-        
-        # Calcula confiança baseada na qualidade das referências
-        confianca = 0.7  # Base
-        if referencias:
-            relevancia_media = sum(ref.get("relevancia", 0) for ref in referencias) / len(referencias)
-            confianca = min(0.95, 0.5 + relevancia_media * 0.5)
-        
-        logger.info(f"✅ Resposta gerada em {tempo_processamento:.2f}s - Categoria: {categoria}")
-        
-        return PerguntaResponse(
-            resposta=resposta_openai.get("resposta", "Erro ao gerar resposta"),
-            categoria=categoria,
-            confianca=confianca,
-            referencias=referencias,
-            tempo_processamento=tempo_processamento,
-            modelo_usado=resposta_openai.get("modelo_usado", settings.OPENAI_MODEL),
-            fallback_usado=False,
-            tokens_usados=resposta_openai.get("tokens_usados", 0)
-        )
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
-    except Exception as e:
-        tempo_processamento = time.time() - inicio
-        logger.error(f"❌ Erro ao processar pergunta: {str(e)}")
-        
-        # Retorna resposta de erro amigável
-        return PerguntaResponse(
-            resposta=f"Desculpe, ocorreu um erro interno ao processar sua pergunta. "
-                    f"Nossa equipe foi notificada. Tente novamente em alguns minutos.",
-            categoria="ERRO",
-            confianca=0.0,
-            referencias=[],
-            tempo_processamento=tempo_processamento,
-            modelo_usado="sistema",
-            fallback_usado=True,
-            tokens_usados=0
-        )
+        # Retorna resposta de erro mas não quebra a API
+        return {
+            "total_manuais": 0,
+            "path": settings.MANUAIS_PATH,
+            "status": "erro",
+            "marcas_distribuicao": {},
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "erro": str(e)
+        }
 
 @app.get("/test")
 async def test_endpoint():
     """Endpoint de teste simples"""
     return {
-        "message": "API funcionando!",
-        "timestamp": time.time(),
-        "manuais_carregados": len(manual_processor.base_manuais) if manual_processor.inicializado else 0
+        "status": "OK",
+        "message": "API funcionando corretamente",
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "manuais_carregados": manual_processor.manuais_carregados,
+        "openai_configured": bool(settings.OPENAI_API_KEY)
     }
 
-# Tratamento de erros globais
-@app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    logger.error(f"❌ Erro não tratado: {str(exc)}")
-    return {
-        "error": "Erro interno do servidor",
-        "message": "Nossa equipe foi notificada sobre este problema"
-    }
+@app.post("/pergunta", response_model=BotResponse)
+async def fazer_pergunta(
+    request: QuestionRequest,
+    openai_service: OpenAIService = Depends(get_openai_service)
+):
+    """Processa pergunta sobre máquinas agrícolas"""
+    
+    # ID único para tracking
+    request_id = str(uuid.uuid4())[:8]
+    start_time = time.time()
+    
+    try:
+        # Valida e sanitiza entrada
+        pergunta_limpa, modelo_limpo, marca_limpa = validate_request(request)
+        
+        logger.info(f"Nova pergunta [req_{request_id}]: '{pergunta_limpa[:50]}...'")
+        
+        # Busca contexto nos manuais
+        busca_start = time.time()
+        contexto, referencias_raw = manual_processor.buscar_contexto_relevante(
+            pergunta_limpa, 
+            modelo_limpo
+        )
+        busca_time = time.time() - busca_start
+        
+        logger.info(f"Busca nos manuais [req_{request_id}]: {len(referencias_raw)} manuais em {busca_time:.2f}s")
+        
+        # Gera resposta com IA
+        ia_start = time.time()
+        resposta_ia = await openai_service.generate_response(
+            pergunta_limpa,
+            contexto,
+            modelo_limpo
+        )
+        ia_time = time.time() - ia_start
+        
+        logger.info(f"Resposta IA [req_{request_id}]: {resposta_ia.get('modelo_usado', 'unknown')} em {ia_time:.2f}s")
+        
+        # Monta referências
+        referencias = [
+            ManualReference(
+                arquivo=ref.get("arquivo", ""),
+                relevancia=ref.get("relevancia", 0.0),
+                trecho=ref.get("trecho", "")[:200] + "..." if len(ref.get("trecho", "")) > 200 else ref.get("trecho", "")
+            )
+            for ref in referencias_raw
+        ]
+        
+        # Tempo total
+        tempo_total = time.time() - start_time
+        
+        logger.info(f"✅ Pergunta processada [req_{request_id}]: confianca {resposta_ia.get('confianca', 0)}, tempo {tempo_total:.2f}s")
+        
+        return BotResponse(
+            resposta=resposta_ia.get("resposta", "Erro ao gerar resposta"),
+            categoria=resposta_ia.get("categoria", "GERAL"),
+            confianca=resposta_ia.get("confianca", 0.0),
+            referencias=referencias,
+            tempo_processamento=tempo_total,
+            modelo_usado=resposta_ia.get("modelo_usado", "unknown"),
+            fallback_usado=resposta_ia.get("fallback_usado", True),
+            tokens_usados=resposta_ia.get("tokens_usados", 0),
+            prompt_tokens=resposta_ia.get("prompt_tokens", 0),
+            completion_tokens=resposta_ia.get("completion_tokens", 0)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Erro ao processar pergunta [req_{request_id}]: {str(e)}")
+        
+        return BotResponse(
+            resposta="Desculpe, ocorreu um erro interno ao processar sua pergunta. Tente novamente em alguns momentos.",
+            categoria="GERAL",
+            confianca=0.0,
+            referencias=[],
+            tempo_processamento=time.time() - start_time,
+            modelo_usado="erro",
+            fallback_usado=True,
+            tokens_usados=0,
+            prompt_tokens=0,
+            completion_tokens=0
+        )
 
 if __name__ == "__main__":
     import uvicorn
