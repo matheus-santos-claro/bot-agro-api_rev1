@@ -511,7 +511,7 @@ Se encontrar problemas, entre em contato com nossa equipe.
         # Remove/substitui caracteres problemáticos
         replacements = {
             '`': "'",      # Backticks
-            '\': '/',     # Barras invertidas - CORRIGIDO
+            #'\': '/',     # Barras invertidas - CORRIGIDO
             '[': '(',      # Colchetes
             ']': ')',
         }
