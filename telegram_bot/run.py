@@ -1,7 +1,13 @@
 # telegram_bot/run.py
-import asyncio
+import os
+import sys
 import logging
-from telegram_bot.bot import agro_bot
+from pathlib import Path
+
+# Configuração de paths
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent
+sys.path.insert(0, str(project_root))
 
 # Configuração de logging
 logging.basicConfig(
@@ -11,18 +17,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def main():
-    """Função principal - VERSÃO SÍNCRONA"""
+    """Função principal do bot"""
     try:
         logger.info("🚀 Iniciando Bot Agrícola Telegram...")
         
-        # Executa bot de forma síncrona
+        # Import após configurar path
+        from telegram_bot.bot import agro_bot
+        
+        # Executa o bot
         agro_bot.app.run_polling(
             allowed_updates=['message', 'callback_query'],
             drop_pending_updates=True
         )
         
     except KeyboardInterrupt:
-        logger.info("🛑 Bot interrompido pelo usuário")
+        logger.info("🛑 Bot interrompido")
     except Exception as e:
         logger.error(f"❌ Erro fatal: {str(e)}")
         raise
