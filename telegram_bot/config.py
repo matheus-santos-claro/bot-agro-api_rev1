@@ -2,33 +2,23 @@
 import os
 from dotenv import load_dotenv
 
+# Carrega variáveis de ambiente
 load_dotenv()
 
 # Configurações do Telegram
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-if not TELEGRAM_BOT_TOKEN:
-    raise ValueError("❌ TELEGRAM_BOT_TOKEN não configurado nas variáveis de ambiente")
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
-# Configurações da API
-API_BASE_URL = os.getenv("API_BASE_URL", "https://bot-agro-api-rev1.onrender.com")
+# URL da API - CORRIGIDA (sem underscore)
+API_BASE_URL = os.getenv('API_BASE_URL', 'https://bot-agro-api-rev1.onrender.com')
 
-# Configurações do banco
-DATABASE_PATH = os.getenv("DATABASE_PATH", "telegram_bot.db")
-
-# Configurações de backup
-BACKUP_WEBHOOK_URL = os.getenv("BACKUP_WEBHOOK_URL")  # Opcional
-BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", "2"))
-
-# IDs de administradores (adicione seu ID do Telegram)
+# IDs dos administradores
 ADMIN_IDS = [
-    int(os.getenv("ADMIN_TELEGRAM_ID", "0"))  # Substitua pelo seu ID
+    int(os.getenv('ADMIN_ID_1', '0')),  # Substitua pelo seu ID
 ]
 
-# Configurações de logging
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+# Configurações do banco
+DATABASE_PATH = 'telegram_bot.db'
+BACKUP_INTERVAL_HOURS = 2
 
-print(f"✅ Configurações carregadas:")
-print(f"   - API URL: {API_BASE_URL}")
-print(f"   - Database: {DATABASE_PATH}")
-print(f"   - Backup interval: {BACKUP_INTERVAL_HOURS}h")
-print(f"   - Admins: {len(ADMIN_IDS)} configurados")
+# Configurações de logging
+LOG_LEVEL = 'INFO'
