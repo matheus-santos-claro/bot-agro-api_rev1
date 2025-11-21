@@ -1,41 +1,35 @@
-# 🚜 Bot Agrícola API
+# 🌾 Bot Agrícola - API + Telegram
 
-API inteligente para consulta de manuais de máquinas agrícolas usando IA.
+Sistema completo de consultas sobre máquinas agrícolas com busca semântica e bot Telegram.
 
-## 🌟 Características
+## 🚀 Features
 
-- ✅ **156 manuais** de máquinas agrícolas indexados
-- ✅ **Busca inteligente** por palavras-chave
-- ✅ **IA híbrida** com múltiplos modelos (GPT-4o-mini, GPT-3.5-turbo)
-- ✅ **Fallback offline** inteligente
-- ✅ **Cache otimizado** para performance
-- ✅ **Deploy-ready** para Render
+### API Principal
+- ✅ Busca semântica com embeddings OpenAI
+- ✅ 156+ manuais técnicos indexados
+- ✅ Suporte a múltiplas marcas (Case IH, John Deere, etc.)
+- ✅ API REST com FastAPI
 
-## 🚀 Deploy no Render
+### Bot Telegram
+- ✅ Interface conversacional
+- ✅ Banco de dados SQLite com backup automático
+- ✅ Estatísticas de usuários e interações
+- ✅ Comandos administrativos
+- ✅ Sistema de backup em tempo real
 
-### Configuração Automática:
-1. **Build Command:** `pip install -r requirements.txt`
-2. **Start Command:** `python -m app.main`
-3. **Environment Variable:** `OPENAI_API_KEY=sua_chave_aqui`
+## 🔗 Links
 
-### Configuração Manual:
-- **Runtime:** Python 3.9+
-- **Port:** Automático (variável PORT)
-- **Health Check:** `/ping`
+- **API:** https://bot-agro-api-rev1.onrender.com
+- **Docs:** https://bot-agro-api-rev1.onrender.com/docs
+- **Bot Telegram:** @agro_expert_bot
 
-## 📊 Endpoints
+## 🧪 Teste Rápido
 
-| Endpoint | Método | Descrição |
-|----------|--------|-----------|
-| `/` | GET | Página inicial |
-| `/ping` | GET | Health check |
-| `/status` | GET | Status do sistema |
-| `/inicializar` | GET | Inicializar processador |
-| `/perguntar` | POST | Fazer pergunta |
-| `/manuais` | GET | Listar manuais |
-| `/docs` | GET | Documentação interativa |
-
-##    Exemplo de Uso
+### API
+```bash
+curl -X POST https://bot-agro-api-rev1.onrender.com/pergunta \
+  -H "Content-Type: application/json" \
+  -d '{"pergunta": "Qual motor da Case IH 4150?"}'
 
 ```bash
 curl -X POST "https://sua-app.onrender.com/perguntar" \
