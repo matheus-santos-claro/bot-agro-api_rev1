@@ -1,41 +1,31 @@
 # telegram_bot/run.py
-"""
-Executor principal do Bot Telegram
-"""
 import asyncio
 import logging
-import sys
-import os
-
-# Adiciona o diretório pai ao path para imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from telegram_bot.bot import agro_bot
 
 # Configuração de logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('telegram_bot.log')
-    ]
+    level=logging.INFO
 )
-
 logger = logging.getLogger(__name__)
 
-async def main():
-    """Função principal"""
-    logger.info("🚀 Iniciando Bot Agrícola Telegram...")
-    
+def main():
+    """Função principal - VERSÃO SÍNCRONA"""
     try:
-        await agro_bot.run()
+        logger.info("🚀 Iniciando Bot Agrícola Telegram...")
+        
+        # Executa bot de forma síncrona
+        agro_bot.app.run_polling(
+            allowed_updates=['message', 'callback_query'],
+            drop_pending_updates=True
+        )
+        
     except KeyboardInterrupt:
         logger.info("🛑 Bot interrompido pelo usuário")
     except Exception as e:
         logger.error(f"❌ Erro fatal: {str(e)}")
         raise
 
-if __name__ == "__main__":
-    # Executa o bot
-    asyncio.run(main())
+if __name__ == '__main__':
+    main()
