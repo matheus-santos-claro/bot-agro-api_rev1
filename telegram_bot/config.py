@@ -9,7 +9,7 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
 # URL da API - CORRIGIDA (sem underscore)
-API_BASE_URL = os.getenv('API_BASE_URL', 'https://bot-agro-api-rev1.onrender.com')
+API_BASE_URL = os.getenv('API_BASE_URL', 'https://bot-agro-api_rev1.onrender.com')
 
 # IDs dos administradores
 ADMIN_IDS = [
