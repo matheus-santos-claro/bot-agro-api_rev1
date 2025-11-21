@@ -1,13 +1,37 @@
+# render.yaml
 services:
+  # API Principal (já existente)
   - type: web
-    name: bot-agro-api
+    name: agro-api
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: OPENAI_API_KEY
         sync: false
-      - key: ENVIRONMENT
-        value: production
-      - key: DEBUG
-        value: false
+      - key: MANUAIS_PATH
+        value: ./manuais
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+
+  # Bot Telegram (novo)
+  - type: worker
+    name: telegram-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r telegram_bot/requirements.txt
+    startCommand: python telegram_bot/run.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: API_BASE_URL
+        value: https://bot-agro-api-rev1.onrender.com
+      - key: DATABASE_PATH
+        value: telegram_bot.db
+      - key: BACKUP_INTERVAL_HOURS
+        value: "2"
+      - key: ADMIN_TELEGRAM_ID
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
