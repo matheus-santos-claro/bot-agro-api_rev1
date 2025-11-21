@@ -431,43 +431,6 @@ Se encontrar problemas, entre em contato com nossa equipe.
             "last_name": user.last_name,
             "language_code": user.language_code
         }
-    
-    async def initialize(self):
-        """Inicializa bot e dependências"""
-        logger.info("🚀 Inicializando Bot Agrícola...")
-        
-        # Inicializa banco de dados
-        await self.database.initialize()
-        
-        logger.info("✅ Bot inicializado com sucesso!")
-    
-    async def run(self):
-    """Executa o bot - VERSÃO SIMPLIFICADA"""
-    try:
-        # Inicializa o bot
-        await self.initialize()
-        
-        logger.info("🤖 Bot rodando! Aguardando mensagens...")
-        
-        # Para uso com run.py síncrono, não precisamos de run_polling aqui
-        # O run.py vai chamar app.run_polling() diretamente
-        
-    except Exception as e:
-        logger.error(f"❌ Erro ao executar bot: {str(e)}")
-        raise
-    finally:
-        await self.cleanup()
-    
-    async def cleanup(self):
-        """Limpeza ao finalizar"""
-        logger.info("🧹 Finalizando bot...")
-        
-        try:
-            await self.api_client.aclose()
-        except Exception as e:
-            logger.error(f"Erro na limpeza: {str(e)}")
-        
-        logger.info("👋 Bot finalizado")
 
 # Instância global
 agro_bot = AgroTelegramBot()
