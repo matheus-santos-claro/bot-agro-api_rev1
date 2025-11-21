@@ -21,7 +21,7 @@ Sistema completo de consultas sobre máquinas agrícolas com busca semântica e 
 
 - **API:** https://bot-agro-api-rev1.onrender.com
 - **Docs:** https://bot-agro-api-rev1.onrender.com/docs
-- **Bot Telegram:** @agro_expert_bot
+- **Bot Telegram:** @agro_expert_ai_bot
 
 ## 🧪 Teste Rápido
 
