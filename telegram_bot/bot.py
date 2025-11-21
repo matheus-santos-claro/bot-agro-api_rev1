@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import json
+import re
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -59,7 +60,29 @@ class AgroTelegramBot:
         # Handler de mensagens
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_question))
         
+        # Error handler para conflitos e outros erros
+        self.app.add_error_handler(self.error_handler)
+        
         logger.info("✅ Handlers configurados")
+    
+    async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Lida com erros da aplicação"""
+        error_msg = str(context.error)
+        logger.error(f"❌ Erro capturado: {error_msg}")
+        
+        # Se for erro de conflito, ignora (não envia mensagem para usuário)
+        if "Conflict" in error_msg or "terminated by other getUpdates" in error_msg:
+            logger.warning("⚠️ Conflito de instância detectado - ignorando")
+            return
+        
+        # Para outros erros, tenta enviar mensagem se houver update válido
+        if update and hasattr(update, 'effective_message') and update.effective_message:
+            try:
+                await update.effective_message.reply_text(
+                    "⚠️ Ocorreu um erro temporário. Tente novamente em alguns segundos."
+                )
+            except Exception:
+                pass  # Ignora se não conseguir enviar mensagem
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /start - VERSÃO CORRIGIDA COM AUTO-INICIALIZAÇÃO"""
@@ -193,7 +216,7 @@ Se encontrar problemas, entre em contato com nossa equipe.
             status_text = f"""
 🔍 **Status do Sistema:**
 
-**�� API Principal:** {api_status}
+**🌐 API Principal:** {api_status}
 **📊 Base de Dados:** ✅ Funcionando
 
 **📈 Estatísticas Gerais:**
@@ -411,7 +434,7 @@ Se encontrar problemas, entre em contato com nossa equipe.
             await update.message.reply_text(f"❌ Erro ao listar usuários: {str(e)}")
     
     async def handle_question(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Processa perguntas dos usuários"""
+        """Processa perguntas dos usuários com fallback robusto"""
         user_data = self._extract_user_data(update)
         pergunta = update.message.text
         
@@ -440,11 +463,8 @@ Se encontrar problemas, entre em contato com nossa equipe.
                     logger.warning(f"⚠️ Erro ao registrar interação: {db_error}")
                     # Continua mesmo se não conseguir registrar
                 
-                # Formata e envia resposta
-                formatted_response = self.format_response(resposta_api)
-                await update.message.reply_text(formatted_response, parse_mode='Markdown')
-                
-                logger.info(f"✅ Resposta enviada para {user_data.get('first_name')}")
+                # Formata e envia resposta com fallback
+                await self.send_formatted_response(update, resposta_api, user_data)
             else:
                 await update.message.reply_text(
                     "❌ Não consegui processar sua pergunta no momento. "
@@ -457,6 +477,155 @@ Se encontrar problemas, entre em contato com nossa equipe.
                 "⚠️ Ocorreu um erro interno. Nossa equipe foi notificada. "
                 "Tente novamente em alguns segundos."
             )
+    
+    async def send_formatted_response(self, update: Update, resposta_api: dict, user_data: dict):
+        """Envia resposta formatada com fallback automático"""
+        try:
+            # Tenta enviar com Markdown primeiro
+            formatted_response = self.format_response_markdown(resposta_api)
+            await update.message.reply_text(formatted_response, parse_mode='Markdown')
+            logger.info(f"✅ Resposta enviada para {user_data.get('first_name')} (Markdown)")
+            
+        except Exception as markdown_error:
+            logger.warning(f"⚠️ Erro no Markdown: {markdown_error}")
+            
+            try:
+                # Fallback: tenta com HTML
+                formatted_response = self.format_response_html(resposta_api)
+                await update.message.reply_text(formatted_response, parse_mode='HTML')
+                logger.info(f"✅ Resposta enviada para {user_data.get('first_name')} (HTML)")
+                
+            except Exception as html_error:
+                logger.warning(f"⚠️ Erro no HTML: {html_error}")
+                
+                # Fallback final: texto simples
+                resposta_simples = self.format_response_plain(resposta_api)
+                await update.message.reply_text(resposta_simples)
+                logger.info(f"✅ Resposta enviada para {user_data.get('first_name')} (Texto simples)")
+    
+    def sanitize_markdown(self, text: str) -> str:
+        """Sanitiza texto para Markdown do Telegram"""
+        if not text:
+            return ""
+        
+        # Remove/substitui caracteres problemáticos
+        replacements = {
+            '`': "'",      # Backticks
+            '\': '/',     # Barras invertidas
+            '[': '(',      # Colchetes
+            ']': ')',
+        }
+        
+        for char, replacement in replacements.items():
+            text = text.replace(char, replacement)
+        
+        # Remove sequências de caracteres especiais
+        text = re.sub(r'[*_`\[\]\]{2,}', '', text)
+        
+        # Escapa caracteres especiais restantes
+        special_chars = ['*', '_', '`', '[', ']']
+        for char in special_chars:
+            text = text.replace(char, f'\{char}')
+        
+        return text
+    
+    def format_response_markdown(self, api_response: dict) -> str:
+        """Formata resposta para Markdown"""
+        resposta = api_response.get("resposta", "")
+        categoria = api_response.get("categoria", "")
+        confianca = api_response.get("confianca", 0)
+        referencias = api_response.get("referencias", [])
+        tempo = api_response.get("tempo_processamento", 0)
+        
+        # Sanitiza conteúdo
+        resposta_limpa = self.sanitize_markdown(resposta)
+        categoria_limpa = self.sanitize_markdown(categoria)
+        
+        # Limita tamanho
+        if len(resposta_limpa) > 3500:
+            resposta_limpa = resposta_limpa[:3500] + "\n\n\[...resposta truncada...\]"
+        
+        # Monta resposta
+        formatted = f"🤖 **Resposta:**\n\n{resposta_limpa}\n\n"
+        formatted += f"📊 **Categoria:** {categoria_limpa}\n"
+        formatted += f"🎯 **Confiança:** {confianca:.0%}\n"
+        formatted += f"⏱️ **Tempo:** {tempo:.1f}s\n"
+        
+        # Adiciona referências
+        if referencias:
+            formatted += f"\n📚 **Fontes consultadas:**\n"
+            for i, ref in enumerate(referencias[:3], 1):
+                arquivo = self.sanitize_markdown(ref.get("arquivo", "")).replace(".md", "")
+                relevancia = ref.get("relevancia", 0)
+                formatted += f"{i}\. {arquivo} \(relevância: {relevancia:.1%}\)\n"
+        
+        return formatted
+    
+    def format_response_html(self, api_response: dict) -> str:
+        """Formata resposta para HTML"""
+        resposta = api_response.get("resposta", "")
+        categoria = api_response.get("categoria", "")
+        confianca = api_response.get("confianca", 0)
+        referencias = api_response.get("referencias", [])
+        tempo = api_response.get("tempo_processamento", 0)
+        
+        # Escapa HTML
+        import html
+        resposta = html.escape(resposta)
+        categoria = html.escape(categoria)
+        
+        # Limita tamanho
+        if len(resposta) > 3500:
+            resposta = resposta[:3500] + "\n\n[...resposta truncada...]"
+        
+        # Monta resposta
+        formatted = f"🤖 <b>Resposta:</b>\n\n{resposta}\n\n"
+        formatted += f"📊 <b>Categoria:</b> {categoria}\n"
+        formatted += f"🎯 <b>Confiança:</b> {confianca:.0%}\n"
+        formatted += f"⏱️ <b>Tempo:</b> {tempo:.1f}s\n"
+        
+        # Adiciona referências
+        if referencias:
+            formatted += f"\n📚 <b>Fontes consultadas:</b>\n"
+            for i, ref in enumerate(referencias[:3], 1):
+                arquivo = html.escape(ref.get("arquivo", "")).replace(".md", "")
+                relevancia = ref.get("relevancia", 0)
+                formatted += f"{i}. {arquivo} (relevância: {relevancia:.1%})\n"
+        
+        return formatted
+    
+    def format_response_plain(self, api_response: dict) -> str:
+        """Formata resposta para texto simples"""
+        resposta = api_response.get("resposta", "")
+        categoria = api_response.get("categoria", "")
+        confianca = api_response.get("confianca", 0)
+        referencias = api_response.get("referencias", [])
+        tempo = api_response.get("tempo_processamento", 0)
+        
+        # Limita tamanho
+        if len(resposta) > 3500:
+            resposta = resposta[:3500] + "\n\n[...resposta truncada...]"
+        
+        # Monta resposta simples
+        formatted = f"🤖 Resposta:\n\n{resposta}\n\n"
+        formatted += f"📊 Categoria: {categoria}\n"
+        formatted += f"🎯 Confiança: {confianca:.0%}\n"
+        formatted += f"⏱️ Tempo: {tempo:.1f}s\n"
+        
+        # Adiciona referências
+        if referencias:
+            formatted += f"\n📚 Fontes consultadas:\n"
+            for i, ref in enumerate(referencias[:3], 1):
+                arquivo = ref.get("arquivo", "").replace(".md", "")
+                relevancia = ref.get("relevancia", 0)
+                formatted += f"{i}. {arquivo} (relevância: {relevancia:.1%})\n"
+        
+        return formatted
+    
+    # Método antigo mantido para compatibilidade
+    def format_response(self, api_response: dict) -> str:
+        """Método de compatibilidade - usa Markdown"""
+        return self.format_response_markdown(api_response)
     
     async def call_api(self, pergunta: str) -> dict:
         """Chama API de manuais"""
@@ -494,36 +663,6 @@ Se encontrar problemas, entre em contato com nossa equipe.
         logger.error("❌ Todos os endpoints falharam")
         return None
     
-    def format_response(self, api_response: dict) -> str:
-        """Formata resposta da API para Telegram"""
-        resposta = api_response.get("resposta", "")
-        categoria = api_response.get("categoria", "")
-        confianca = api_response.get("confianca", 0)
-        referencias = api_response.get("referencias", [])
-        tempo = api_response.get("tempo_processamento", 0)
-        
-        # Limita tamanho da resposta (Telegram tem limite de 4096 caracteres)
-        if len(resposta) > 3500:
-            resposta = resposta[:3500] + "\n\n[...resposta truncada...]"
-        
-        # Monta resposta formatada
-        formatted = f"🤖 **Resposta:**\n\n{resposta}\n\n"
-        
-        # Adiciona informações técnicas
-        formatted += f"📊 **Categoria:** {categoria}\n"
-        formatted += f"🎯 **Confiança:** {confianca:.0%}\n"
-        formatted += f"⏱️ **Tempo:** {tempo:.1f}s\n"
-        
-        # Adiciona referências se houver
-        if referencias:
-            formatted += f"\n📚 **Fontes consultadas:**\n"
-            for i, ref in enumerate(referencias[:3], 1):  # Máximo 3 referências
-                arquivo = ref.get("arquivo", "").replace(".md", "")
-                relevancia = ref.get("relevancia", 0)
-                formatted += f"{i}. {arquivo} (relevância: {relevancia:.1%})\n"
-        
-        return formatted
-    
     def _extract_user_data(self, update: Update) -> dict:
         """Extrai dados do usuário do update"""
         user = update.effective_user
@@ -535,7 +674,5 @@ Se encontrar problemas, entre em contato com nossa equipe.
             "language_code": user.language_code
         }
 
-# Instância global
-agro_bot = AgroTelegramBot()
 # Instância global
 agro_bot = AgroTelegramBot()
