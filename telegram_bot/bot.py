@@ -69,8 +69,6 @@ Sou seu assistente especializado em máquinas agrícolas.
 **📝 Como usar:**
 Envie sua pergunta sobre:
 • Especificações técnicas
-• Manutenção e operação
-• Troubleshooting
 • Configurações
 
 **💡 Exemplo:**
@@ -92,9 +90,8 @@ Vamos começar! Envie sua primeira pergunta! 🚀
 
 **📋 Tipos de pergunta:**
 • Especificações de motores e potência
-• Procedimentos de manutenção  
-• Configurações de operação
-• Solução de problemas técnicos
+• Configurações
+• Características Gerais de Colheitadeiras, Tratores, Pulverizadores e Plantadeiras
 
 **💡 Dicas importantes:**
 • Seja específico com marca e modelo
@@ -110,9 +107,9 @@ Vamos começar! Envie sua primeira pergunta! 🚀
 
 **📝 Exemplos de perguntas:**
 • "Motor da colheitadeira Case IH 4150"
-• "Manutenção preventiva John Deere 7M230"
-• "Como configurar New Holland para milho"
-• "Troubleshooting trator Valtra BH180"
+• "Capacidade do Tanque de Grãos da Série S John Deere"
+• "Quais Modelos disponíveis na Série TX das Colheitadeiras John Deere"
+• "Qual modelo de transmissão do Trator MF 4707 da Massey Ferguson"
 
 **🆘 Suporte:**
 Se encontrar problemas, entre em contato com nossa equipe.
@@ -442,27 +439,21 @@ Se encontrar problemas, entre em contato com nossa equipe.
         # Inicializa banco de dados
         await self.database.initialize()
         
-        # Inicializa aplicação do bot
-        await self.app.initialize()
-        await self.app.start()
-        
         logger.info("✅ Bot inicializado com sucesso!")
     
     async def run(self):
-        """Executa o bot"""
+        """Executa o bot - VERSÃO CORRIGIDA"""
         try:
+            # Inicializa o bot
             await self.initialize()
-            
-            # Inicia polling
-            await self.app.updater.start_polling(
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True
-            )
             
             logger.info("🤖 Bot rodando! Aguardando mensagens...")
             
-            # Mantém o bot rodando
-            await self.app.updater.idle()
+            # Método correto para python-telegram-bot 20.x
+            await self.app.run_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True
+            )
             
         except Exception as e:
             logger.error(f"❌ Erro ao executar bot: {str(e)}")
@@ -476,8 +467,6 @@ Se encontrar problemas, entre em contato com nossa equipe.
         
         try:
             await self.api_client.aclose()
-            await self.app.stop()
-            await self.app.shutdown()
         except Exception as e:
             logger.error(f"Erro na limpeza: {str(e)}")
         
