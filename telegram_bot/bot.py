@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import json
+import ssl
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -23,8 +24,16 @@ class AgroTelegramBot:
         if not TELEGRAM_BOT_TOKEN:
             raise ValueError("❌ TELEGRAM_BOT_TOKEN não configurado")
         
+        # Configuração SSL permissiva para Render
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
         self.app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-        self.api_client = httpx.AsyncClient(timeout=30.0)
+        self.api_client = httpx.AsyncClient(
+            timeout=30.0,
+            verify=ssl_context
+        )
         self.database = telegram_db
         self.backup_service = BackupService(self.database)
         
@@ -142,8 +151,9 @@ Se encontrar problemas, entre em contato com nossa equipe.
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /status"""
         try:
-            # Testa API
-            response = await self.api_client.get(f"{API_BASE_URL}/health", timeout=10.0)
+            # Testa API com SSL permissivo
+            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+                response = await client.get(f"{API_BASE_URL}/health")
             
             if response.status_code == 200:
                 api_status = "✅ Online"
@@ -180,6 +190,7 @@ Se encontrar problemas, entre em contato com nossa equipe.
             await update.message.reply_text(status_text, parse_mode='Markdown')
             
         except Exception as e:
+            logger.error(f"Erro no status: {str(e)}")
             await update.message.reply_text(f"❌ Erro ao verificar status: {str(e)}")
     
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -426,13 +437,14 @@ Se encontrar problemas, entre em contato com nossa equipe.
             )
     
     async def call_api(self, pergunta: str) -> dict:
-        """Chama API de manuais"""
+        """Chama API de manuais com SSL permissivo"""
         try:
-            response = await self.api_client.post(
-                f"{API_BASE_URL}/pergunta",
-                json={"pergunta": pergunta},
-                timeout=25.0
-            )
+            # Cliente com SSL desabilitado para evitar problemas de certificado
+            async with httpx.AsyncClient(verify=False, timeout=25.0) as client:
+                response = await client.post(
+                    f"{API_BASE_URL}/pergunta",
+                    json={"pergunta": pergunta}
+                )
             
             if response.status_code == 200:
                 return response.json()
