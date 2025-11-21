@@ -2,11 +2,11 @@
 import asyncio
 import logging
 import json
-import ssl
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import httpx
+import ssl
 
 from .config import TELEGRAM_BOT_TOKEN, API_BASE_URL, ADMIN_IDS
 from .database import telegram_db
@@ -24,7 +24,9 @@ class AgroTelegramBot:
         if not TELEGRAM_BOT_TOKEN:
             raise ValueError("❌ TELEGRAM_BOT_TOKEN não configurado")
         
-        # Configuração SSL permissiva para Render
+        logger.info(f"🔑 Inicializando bot com API: {API_BASE_URL}")
+        
+        # Configuração SSL mais permissiva
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
@@ -32,7 +34,7 @@ class AgroTelegramBot:
         self.app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
         self.api_client = httpx.AsyncClient(
             timeout=30.0,
-            verify=ssl_context
+            verify=False  # Desabilita verificação SSL para Render
         )
         self.database = telegram_db
         self.backup_service = BackupService(self.database)
@@ -151,16 +153,34 @@ Se encontrar problemas, entre em contato com nossa equipe.
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Comando /status"""
         try:
-            # Testa API com SSL permissivo
-            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
-                response = await client.get(f"{API_BASE_URL}/health")
+            # Testa múltiplos endpoints da API
+            api_status = "❌ Offline"
+            api_data = {}
             
-            if response.status_code == 200:
-                api_status = "✅ Online"
-                api_data = response.json()
-            else:
-                api_status = f"⚠️ Problema (Status: {response.status_code})"
-                api_data = {}
+            # Lista de endpoints para testar
+            endpoints_to_test = [
+                f"{API_BASE_URL}/health",
+                f"{API_BASE_URL}/",
+                f"{API_BASE_URL}/docs",
+                f"{API_BASE_URL}/api/health"
+            ]
+            
+            for endpoint in endpoints_to_test:
+                try:
+                    logger.info(f"🔍 Testando endpoint: {endpoint}")
+                    response = await self.api_client.get(endpoint, timeout=10.0)
+                    
+                    if response.status_code == 200:
+                        api_status = "✅ Online"
+                        api_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+                        logger.info(f"✅ Endpoint funcionando: {endpoint}")
+                        break
+                    else:
+                        logger.warning(f"⚠️ Endpoint {endpoint} retornou: {response.status_code}")
+                        
+                except Exception as e:
+                    logger.warning(f"⚠️ Erro no endpoint {endpoint}: {str(e)}")
+                    continue
             
             # Estatísticas do banco
             try:
@@ -173,7 +193,7 @@ Se encontrar problemas, entre em contato com nossa equipe.
             status_text = f"""
 🔍 **Status do Sistema:**
 
-**🌐 API Principal:** {api_status}
+**�� API Principal:** {api_status}
 **📊 Base de Dados:** ✅ Funcionando
 
 **📈 Estatísticas Gerais:**
@@ -184,13 +204,15 @@ Se encontrar problemas, entre em contato com nossa equipe.
 
 **🏆 Categoria mais perguntada:** {stats.get('categoria_mais_perguntada', 'N/A')}
 
+**🔧 URL da API:** `{API_BASE_URL}`
+
 **⏰ Última verificação:** {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
             """
             
             await update.message.reply_text(status_text, parse_mode='Markdown')
             
         except Exception as e:
-            logger.error(f"Erro no status: {str(e)}")
+            logger.error(f"Erro no comando status: {str(e)}")
             await update.message.reply_text(f"❌ Erro ao verificar status: {str(e)}")
     
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -437,27 +459,40 @@ Se encontrar problemas, entre em contato com nossa equipe.
             )
     
     async def call_api(self, pergunta: str) -> dict:
-        """Chama API de manuais com SSL permissivo"""
-        try:
-            # Cliente com SSL desabilitado para evitar problemas de certificado
-            async with httpx.AsyncClient(verify=False, timeout=25.0) as client:
-                response = await client.post(
-                    f"{API_BASE_URL}/pergunta",
-                    json={"pergunta": pergunta}
-                )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"API retornou status {response.status_code}: {response.text}")
-                return None
+        """Chama API de manuais"""
+        # Lista de endpoints para tentar
+        endpoints_to_try = [
+            f"{API_BASE_URL}/pergunta",
+            f"{API_BASE_URL}/api/pergunta",
+            f"{API_BASE_URL}/query",
+            f"{API_BASE_URL}/api/query"
+        ]
+        
+        for endpoint in endpoints_to_try:
+            try:
+                logger.info(f"🔍 Tentando endpoint: {endpoint}")
                 
-        except asyncio.TimeoutError:
-            logger.error("Timeout na chamada da API")
-            return None
-        except Exception as e:
-            logger.error(f"Erro na chamada da API: {str(e)}")
-            return None
+                response = await self.api_client.post(
+                    endpoint,
+                    json={"pergunta": pergunta},
+                    timeout=25.0
+                )
+                
+                if response.status_code == 200:
+                    logger.info(f"✅ Sucesso no endpoint: {endpoint}")
+                    return response.json()
+                else:
+                    logger.warning(f"⚠️ Endpoint {endpoint} retornou: {response.status_code}")
+                    
+            except asyncio.TimeoutError:
+                logger.error(f"⏰ Timeout no endpoint: {endpoint}")
+                continue
+            except Exception as e:
+                logger.error(f"❌ Erro no endpoint {endpoint}: {str(e)}")
+                continue
+        
+        logger.error("❌ Todos os endpoints falharam")
+        return None
     
     def format_response(self, api_response: dict) -> str:
         """Formata resposta da API para Telegram"""
@@ -500,5 +535,7 @@ Se encontrar problemas, entre em contato com nossa equipe.
             "language_code": user.language_code
         }
 
+# Instância global
+agro_bot = AgroTelegramBot()
 # Instância global
 agro_bot = AgroTelegramBot()
