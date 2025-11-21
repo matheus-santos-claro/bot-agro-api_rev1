@@ -8,21 +8,21 @@ load_dotenv()
 # Configurações do Telegram
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 
-# URL da API - CORRIGIDA (sem underscore)
+# URL da API - CORRIGIDA (hífen em vez de underscore)
 API_BASE_URL = os.getenv('API_BASE_URL', 'https://bot-agro-api-rev1.onrender.com')
 
 # IDs dos administradores
 ADMIN_IDS = [
-    int(os.getenv('ADMIN_ID_1', '0')),  # Substitua pelo seu ID
+    int(os.getenv('ADMIN_ID_1', '0')),
 ]
 
 # Configurações do banco
 DATABASE_PATH = 'telegram_bot.db'
 BACKUP_INTERVAL_HOURS = 2
 
-# Configurações de backup - ADICIONADAS
-BACKUP_WEBHOOK_URL = os.getenv('BACKUP_WEBHOOK_URL', '')  # URL opcional para webhook de backup
-BACKUP_RETENTION_DAYS = int(os.getenv('BACKUP_RETENTION_DAYS', '7'))  # Manter backups por 7 dias
+# Configurações de backup
+BACKUP_WEBHOOK_URL = os.getenv('BACKUP_WEBHOOK_URL', '')
+BACKUP_RETENTION_DAYS = int(os.getenv('BACKUP_RETENTION_DAYS', '7'))
 
 # Configurações de logging
 LOG_LEVEL = 'INFO'
@@ -32,7 +32,7 @@ MAX_REQUESTS_PER_MINUTE = int(os.getenv('MAX_REQUESTS_PER_MINUTE', '10'))
 MAX_REQUESTS_PER_HOUR = int(os.getenv('MAX_REQUESTS_PER_HOUR', '100'))
 
 # Configurações de cache
-CACHE_TTL_SECONDS = int(os.getenv('CACHE_TTL_SECONDS', '300'))  # 5 minutos
+CACHE_TTL_SECONDS = int(os.getenv('CACHE_TTL_SECONDS', '300'))
 
 # Configurações de timeout
 API_TIMEOUT_SECONDS = int(os.getenv('API_TIMEOUT_SECONDS', '30'))
