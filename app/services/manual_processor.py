@@ -1,4 +1,65 @@
-import os
+import logging
+import numpy as np
+from typing import List, Dict, Tuple, Optional
+import aiofiles
+import asyncio
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+class ManualProcessor:
+    def __init__(self):
+        self.manuais_cache = {}
+        self.manuais_embeddings = {}
+        self.manuais_carregados = 0
+        self.openai_client = None
+        self.embeddings_gerados = False
+        
+    async def initialize(self):
+        """Carrega todos os manuais e gera embeddings na inicialização"""
+        await self.carregar_manuais()
+        await self.gerar_embeddings_titulos()
+        
+    async def carregar_manuais(self) -> Dict[str, str]:
+        """Carrega todos os manuais .md de forma assíncrona"""
+        if self.manuais_cache:
+            return self.manuais_cache
+            
+        try:
+            pattern = os.path.join(settings.MANUAIS_PATH, "*.md")
+            arquivos_md = glob.glob(pattern)
+            
+            logger.info(f"🔍 Encontrados {len(arquivos_md)} arquivos .md em {settings.MANUAIS_PATH}")
+            
+            if not arquivos_md:
+                logger.error(f"❌ Nenhum arquivo .md encontrado em {settings.MANUAIS_PATH}")
+                return {}
+            
+            tasks = []
+            for arquivo in arquivos_md:
+                tasks.append(self._carregar_arquivo(arquivo))
+            
+            resultados = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for resultado in resultados:
+                if isinstance(resultado, tuple):
+                    nome_arquivo, conteudo = resultado
+                    if conteudo and len(conteudo.strip()) > 100:  # Só adiciona se tem conteúdo substancial
+                        self.manuais_cache[nome_arquivo] = conteudo
+                        logger.info(f"✅ Carregado: {nome_arquivo} ({len(conteudo)} chars)")
+                    else:
+                        logger.warning(f"⚠️ Arquivo vazio ou muito pequeno: {nome_arquivo}")
+                    
+            self.manuais_carregados = len(self.manuais_cache)
+            logger.info(f"📚 Total carregados: {self.manuais_carregados} manuais")
+            
+            # Lista alguns manuais para debug
+            for nome in list(self.manuais_cache.keys())[:5]:
+                logger.info(f"📄 Manual disponível: {nome}")
+            
+            return self.manuais_cache
+            
+        exceptimport os
 import glob
 import logging
 import numpy as np
@@ -104,7 +165,7 @@ class ManualProcessor:
         """Gera embedding EXATAMENTE como seu notebook"""
         try:
             resposta = self.openai_client.embeddings.create(
-                model="text-embedding-3-small",
+                model="text-embedding-3-small", 
                 input=texto
             )
             return np.array(resposta.data[0].embedding)
@@ -188,11 +249,13 @@ class ManualProcessor:
 
             # 4. Monta prompt EXATAMENTE como seu notebook
             prompt_completo = f"""
-Você é um especialista técnico em máquinas agrícolas. Use apenas o conteúdo dos manuais abaixo para responder à pergunta do usuário.
+Você é um especialista técnico em máquinas agrícolas.
+Use apenas o conteúdo dos manuais abaixo para responder à pergunta do usuário.
 
 Instruções:
 - Se a pergunta envolver marcas diferentes, peça educadamente para o usuário perguntar uma por vez.
-- Se a pergunta não tiver relação com máquinas agrícolas, RESPONDA usando seu conhecimento geral, mas explique gentilmente que seu foco é máquinas agrícolas.
+- Se a pergunta não tiver relação com máquinas agrícolas, RESPONDA usando seu conhecimento geral,
+  mas explique gentilmente que seu foco é máquinas agrícolas.
 - Se a pergunta mencionar várias máquinas da MESMA marca, responda com todas as informações relevantes.
 - Mantenha um tom profissional e cordial.
 - Cite sempre o nome do manual (APENAS 1 MANUAL) e a seção/subseção usada como base.
@@ -200,9 +263,9 @@ Instruções:
 ---
 📘 CONTEXTO:
 {contexto}
-
 ---
-🧭 PERGUNTA: {pergunta}
+🧭 PERGUNTA:
+{pergunta}
 """
 
             # 5. Prepara referências
@@ -215,6 +278,7 @@ Instruções:
                 })
 
             logger.info(f"✅ Contexto montado com {len(top_manuais)} manuais")
+
             return prompt_completo, referencias
 
         except Exception as e:
