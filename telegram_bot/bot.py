@@ -128,6 +128,10 @@ Envie sua pergunta sobre:
 /stats - Suas estatísticas
 /status - Status da API
 
+🤝 Precisa de ajuda?
+Para dúvidas, sugestões ou melhorias, 
+entre em contato: @matheus_santos_ia
+
 Vamos começar! Envie sua primeira pergunta! 🚀
             """
             
