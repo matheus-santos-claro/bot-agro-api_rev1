@@ -1,65 +1,4 @@
-import logging
-import numpy as np
-from typing import List, Dict, Tuple, Optional
-import aiofiles
-import asyncio
-from app.config import settings
-
-logger = logging.getLogger(__name__)
-
-class ManualProcessor:
-    def __init__(self):
-        self.manuais_cache = {}
-        self.manuais_embeddings = {}
-        self.manuais_carregados = 0
-        self.openai_client = None
-        self.embeddings_gerados = False
-        
-    async def initialize(self):
-        """Carrega todos os manuais e gera embeddings na inicialização"""
-        await self.carregar_manuais()
-        await self.gerar_embeddings_titulos()
-        
-    async def carregar_manuais(self) -> Dict[str, str]:
-        """Carrega todos os manuais .md de forma assíncrona"""
-        if self.manuais_cache:
-            return self.manuais_cache
-            
-        try:
-            pattern = os.path.join(settings.MANUAIS_PATH, "*.md")
-            arquivos_md = glob.glob(pattern)
-            
-            logger.info(f"🔍 Encontrados {len(arquivos_md)} arquivos .md em {settings.MANUAIS_PATH}")
-            
-            if not arquivos_md:
-                logger.error(f"❌ Nenhum arquivo .md encontrado em {settings.MANUAIS_PATH}")
-                return {}
-            
-            tasks = []
-            for arquivo in arquivos_md:
-                tasks.append(self._carregar_arquivo(arquivo))
-            
-            resultados = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            for resultado in resultados:
-                if isinstance(resultado, tuple):
-                    nome_arquivo, conteudo = resultado
-                    if conteudo and len(conteudo.strip()) > 100:  # Só adiciona se tem conteúdo substancial
-                        self.manuais_cache[nome_arquivo] = conteudo
-                        logger.info(f"✅ Carregado: {nome_arquivo} ({len(conteudo)} chars)")
-                    else:
-                        logger.warning(f"⚠️ Arquivo vazio ou muito pequeno: {nome_arquivo}")
-                    
-            self.manuais_carregados = len(self.manuais_cache)
-            logger.info(f"📚 Total carregados: {self.manuais_carregados} manuais")
-            
-            # Lista alguns manuais para debug
-            for nome in list(self.manuais_cache.keys())[:5]:
-                logger.info(f"📄 Manual disponível: {nome}")
-            
-            return self.manuais_cache
-            
-        exceptimport os
+import os
 import glob
 import logging
 import numpy as np
@@ -287,4 +226,3 @@ Instruções:
 
 # Instância global
 manual_processor = ManualProcessor()
-
